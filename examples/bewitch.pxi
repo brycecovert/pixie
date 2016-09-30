@@ -34,6 +34,8 @@
   (defcfn box)
   (defcfn attron)
   (defcfn wattron)
+  (defcfn werase)
+  (defcfn erase)
   (defcfn refresh)
   (defcfn wrefresh)
   (defcfn noecho)
@@ -68,14 +70,17 @@
           [pair (* 256 (inc i))]) ))
 
 (defprotocol IWritable
+  (do-clear [this])
   (render [this y x thing])
-  (do-refresh []))
+  (do-refresh [this]))
 
 (defprotocol IDestroyable
   (destroy [this]))
 
 (deftype Screen [scr]
   IWritable
+  (do-clear [this]
+    (erase))
   (render [this y x thing]
     (move (inc y) (inc x))
     (cond (char? thing)
@@ -92,7 +97,8 @@
                                  (:char thing))))
 
           :else
-          nil))
+          nil)
+    this)
   (do-refresh [this]
     (refresh))
 
@@ -105,7 +111,10 @@
     (endwin)))
 
 (deftype Window [win]
+  
   IWritable
+  (do-clear [this]
+    (werase win))
   (render [this y x thing]
     (wmove win (inc y) (inc x))
     (cond (char? thing)
@@ -122,7 +131,8 @@
                                  (:char thing))))
 
           :else
-          nil))
+          nil)
+    this)
   (do-refresh [this]
     (wrefresh win))
 
@@ -149,5 +159,16 @@
         window (->Window win)]
     (box win 0 0)
     window))
+
+(defmacro with-window [binding & forms]
+  (let [first-binding (into [] (take 2 binding))]
+    (if (seq first-binding)
+      `(let ~first-binding
+         (try
+           (with-window ~(drop 2 binding) ~@forms) 
+           (do-refresh ~(first first-binding))
+           (destroy ~(first first-binding))
+           (catch ex (destroy ~(first first-binding)))))
+      `(do ~@forms))))
 
 
