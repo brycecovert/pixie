@@ -1,29 +1,10 @@
 (ns ncurses
   (:require [pixie.ffi-infer :refer :all]
             [pixie.ffi :as ffi]
-            [pixie.time :refer [time]]))
+            [pixie.time :refer [time]]
+            [bewitch :as bewitch]))
 
-(with-config {:library "ncurses"
-              :cxx-flags ["-I/usr/local/Cellar/ncurses/6.0_2/include/ -DGCC_PRINTF"]
-              :includes ["ncurses.h"]}
-  (defconst COLOR_BLACK)
-  (defconst COLOR_RED)
-  (defconst COLOR_GREEN)
-  (defconst COLOR_YELLOW)
-  (defconst COLOR_BLUE)	
-  (defconst COLOR_MAGENTA)	
-  (defconst COLOR_CYAN)	
-  (defconst COLOR_WHITE)
-  (defcfn initscr)
-  (defcfn addch)
-  (defcfn attron)
-  (defcfn refresh)
-  (defcfn getch)
-  (defcfn init_pair)
-  (defcfn start_color)
-  (defcfn move)
-  (defcfn addstr)
-  (defcfn endwin))
+
 
 (def game-map-input ["#### ######## "
                      "#..# #......# "
@@ -43,54 +24,51 @@
                             l))
                    game-map-input))
 
-(defprotocol IRenender
-  (do-render [this]))
 
-(extend-protocol IRender PersistentHashMap
-                 (do-render [this]
-                   (attron (colors (:color this)))
-                   (addch (int (:char this)))))
+(def player {:x 1 :y 1 :renderable {:color [:blue :black] :char "@"}})
 
-(extend-protocol IRender Character
-                 (do-render [this]
-                   (addch (int this))))
-(def color-map {:black COLOR_BLACK 
-                :red COLOR_RED 
-                :green COLOR_GREEN 
-                :yellow COLOR_YELLOW 
-                :blue COLOR_BLUE 
-                :magenta COLOR_MAGENTA 
-                :cyan COLOR_CYAN 
-                :white COLOR_WHITE })
+(defn update-score-window [window]
+  (bewitch/render window 0 0 "Score: 100")
+  (bewitch/render window 1 0 "HP: 20/20")
+  (bewitch/render window 2 0 "MP: 10/10")
+  (bewitch/do-refresh window)
+  window)
+(defn score-window []
+  (update-score-window (bewitch/new-window 5 30 1 50)))
 
+(let [scr (bewitch/init)
+      play-win (bewitch/new-window 20 40 0 0)
+      ]
+  (loop [player player]
+    (for [[y line] (map vector (range) game-map)]
+      (for [[x c] (map vector (range) line)]
+        (bewitch/render play-win y x c)))
 
+    (bewitch/render play-win  (:y player) (:x player) (:renderable player))
+    (bewitch/do-refresh scr)
+    (bewitch/do-refresh play-win)
+    (score-window)
 
-(initscr)
-(start_color)
-(def colors
-  (loop [[fg & fgs] (keys color-map)
-         i 0
-         color-number {}]
-    (if fg
-      (let [[i color-number ]
-            (loop [[bg & bgs] (keys color-map) i i color-number color-number]
-              (cond (not bg)
-                    [i color-number ]
-
-                    :else
-                    (do
-                      (init_pair (inc i) (color-map fg) (color-map bg))
-                      (recur bgs (inc i) (assoc color-number [fg bg] (* 256 (inc i)))))))]
-        (recur fgs i color-number))
-
-      color-number)))
-
-(for [[y line] (map vector (range) game-map)]
-  (for [[x c] (map vector (range) line)]
     
-    (move y x)
-    (do-render c)))
+    (condp = (bewitch/getch)
+      bewitch/KEY_UP
+      (recur (update-in player [:y] dec))
 
-(refresh)
-(getch)
-(endwin)
+      bewitch/KEY_DOWN
+      (recur (update-in player [:y] inc))
+
+      bewitch/KEY_LEFT
+      (recur (update-in player [:x] dec))
+
+      bewitch/KEY_RIGHT
+      (recur (update-in player [:x] inc))
+
+      (int \q)
+      nil
+      
+      (recur player)))
+  (bewitch/destroy play-win)
+  (bewitch/destroy scr))
+
+
+
